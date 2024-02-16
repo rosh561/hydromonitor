@@ -9,7 +9,8 @@
 #include <ctype.h>
 
 // ADD YOUR IMPORTS HERE
-
+#include "DHT.h"
+#include <FastLED.h>
 
 
 #ifndef _WIFI_H 
@@ -38,19 +39,25 @@
 #define ARDUINOJSON_USE_DOUBLE      1 
 
 // DEFINE THE CONTROL PINS FOR THE DHT22 
+#define DHTPIN 2
+#define DHTTYPE DHT22 
+
+#define NUM_LEDS 7
+#define DATA_PIN 32
+#define CLOCK_PIN 13
 
 
 
 
 // MQTT CLIENT CONFIG  
-static const char* pubtopic      = "620012345";                    // Add your ID number here
-static const char* subtopic[]    = {"620012345_sub","/elet2415"};  // Array of Topics(Strings) to subscribe to
-static const char* mqtt_server   = "local";         // Broker IP address or Domain name as a String 
+static const char* pubtopic      = "620142646";                    // Add your ID number here
+static const char* subtopic[]    = {"620142646_sub","/elet2415"};  // Array of Topics(Strings) to subscribe to
+static const char* mqtt_server   = "www.yanacreations.com";         // Broker IP address or Domain name as a String 
 static uint16_t mqtt_port        = 1883;
 
 // WIFI CREDENTIALS
-const char* ssid       = "YOUR_SSID";     // Add your Wi-Fi ssid
-const char* password   = "YOUR_PASSWORD"; // Add your Wi-Fi password 
+const char* ssid       = "MonaConnect";     // Add your Wi-Fi ssid
+const char* password   = ""; // Add your Wi-Fi password 
 
 
 
@@ -81,7 +88,8 @@ double calcHeatIndex(double Temp, double Humid);
 
 
 /* Init class Instances for the DHT22 etcc */
- 
+DHT dht(DHTPIN, DHTTYPE);
+CRGB leds[NUM_LEDS];
   
 
 //############### IMPORT HEADER FILES ##################
@@ -102,7 +110,12 @@ void setup() {
   // INITIALIZE ALL SENSORS AND DEVICES
   
   /* Add all other necessary sensor Initializations and Configurations here */
+   FastLED.addLeds<NEOPIXEL, DATA_PIN>(leds, NUM_LEDS);
+   
+    
+    Serial.println(F("DHTxx test!"));
 
+    dht.begin();
 
   initialize();     // INIT WIFI, MQTT & NTP 
   // vButtonCheckFunction(); // UNCOMMENT IF USING BUTTONS INT THIS LAB, THEN ADD LOGIC FOR INTERFACING WITH BUTTONS IN THE vButtonCheck FUNCTION
@@ -112,7 +125,18 @@ void setup() {
 
 void loop() {
     // put your main code here, to run repeatedly:       
-    vTaskDelay(1000 / portTICK_PERIOD_MS);    
+    vTaskDelay(1000 / portTICK_PERIOD_MS); 
+    //HI =   -42.379 + (2.04901523*T) + (10.14333127*R) - (0.22475541*T*R) - (6.83783 * (1e-3) *T*T) - (5.481717 * (1e-2)*R*R) + (1.22874 * (1e-3)*T*T*R) + (8.5282 * (1e-4)*T*R*R) - (1.99 * (1e-6)*T*T*R*R);
+   // Serial.println(HI); 
+    /*uint8_t brightness = 255; // brightness values ranges from 0 to 255
+    for(int x=0; x<7; x++){ 
+    leds[x] = CRGB( 0, 0, 255); // R, G, B range for each value is 0 to 255
+    FastLED.setBrightness( brightness ); // Ranges from 0 to 255
+    FastLED.show(); // Send changes to LED array
+    delay(50);
+    }*/
+
+       
 }
 
 
@@ -142,10 +166,10 @@ void vUpdate( void * pvParameters )  {
           // #######################################################
    
           // 1. Read Humidity and save in variable below
-          double h = 0;
+          double h = dht.readHumidity();
            
-          // 2. Read temperature as Celsius   and save in variable below
-          double t = 0;    
+          // 2. Read temperature as Celsius and save in variable below
+          double t = dht.readTemperature();    
  
 
           if(isNumber(t)){
@@ -159,7 +183,25 @@ void vUpdate( void * pvParameters )  {
 
               // 4. Seralize / Covert JSon object to JSon string and store in message array
                
-              // 5. Publish message to a topic sobscribed to by both backend and frontend                
+              // 5. Publish message to a topic sobscribed to by both backend and frontend   
+              
+          StaticJsonDocument<1000> doc; // Create JSon object
+          char message[1100]  = {0};
+
+          // Add key:value pairs to JSon object
+          doc["id"] = "620142646";
+          doc["timestamp"]  = getTimeStamp();
+          doc["temperature"] = t;
+          doc["humidity"] = h;
+          doc["heatindex"] = calcHeatIndex(t, h);
+
+
+          serializeJson(doc, message);  // Seralize / Covert JSon object to JSon string and store in char* array
+
+          if(mqtt.connected() ){
+            publish(pubtopic, message);
+          }
+                       
 
           }
 
@@ -210,10 +252,27 @@ void callback(char* topic, byte* payload, unsigned int length) {
 
   if (strcmp(type, "controls") == 0){
     // 1. EXTRACT ALL PARAMETERS: NODES, RED,GREEN, BLUE, AND BRIGHTNESS FROM JSON OBJECT
+      int brightness = doc["brightness"];
+      int led_amount = doc["leds"];
+      int r = doc["color"]["r"];
+      int g = doc["color"]["g"];
+      int b = doc["color"]["b"];
 
     // 2. ITERATIVELY, TURN ON LED(s) BASED ON THE VALUE OF NODES. Ex IF NODES = 2, TURN ON 2 LED(s)
 
     // 3. ITERATIVELY, TURN OFF ALL REMAINING LED(s).
+    for(int x=0; x<led_amount; x++){ 
+    leds[x] = CRGB( r, g, b);
+    FastLED.setBrightness( brightness ); 
+    FastLED.show(); 
+    vTaskDelay(50 / portTICK_PERIOD_MS);
+    }
+    for(int x=led_amount; x<7; x++){ 
+    leds[x] = CRGB::Black; 
+    FastLED.setBrightness( brightness );
+    FastLED.show(); 
+    vTaskDelay(50 / portTICK_PERIOD_MS);
+ }
    
   }
 }
@@ -239,16 +298,23 @@ bool publish(const char *topic, const char *payload){
 //***** Complete the util functions below ******
 
 double convert_Celsius_to_fahrenheit(double c){    
-    // CONVERTS INPUT FROM °C TO °F. RETURN RESULTS     
+    // CONVERTS INPUT FROM °C TO °F. RETURN RESULTS    
+    double f = (c * 1.8) + 32;
+    return f;
 }
 
 double convert_fahrenheit_to_Celsius(double f){    
-    // CONVERTS INPUT FROM °F TO °C. RETURN RESULT    
+    // CONVERTS INPUT FROM °F TO °C. RETURN RESULT
+    double c = (f - 32) / 1.8;
+    return c;  
 }
 
 double calcHeatIndex(double Temp, double Humid){
     // CALCULATE AND RETURN HEAT INDEX USING EQUATION FOUND AT https://byjus.com/heat-index-formula/#:~:text=The%20heat%20index%20formula%20is,an%20implied%20humidity%20of%2020%25
-  
+ double T = convert_Celsius_to_fahrenheit(Temp);
+ double HIF =  -42.379 + (2.04901523*T) + (10.14333127*Humid) - (0.22475541*T*Humid) - (6.83783 * (1e-3) *T*T) - (5.481717 * (1e-2)*Humid*Humid) + (1.22874 * (1e-3)*T*T*Humid) + (8.5282 * (1e-4)*T*Humid*Humid) - (1.99 * (1e-6)*T*T*Humid*Humid);
+ double HIC = convert_fahrenheit_to_Celsius(HIF);
+ return HIC;
 }
  
 

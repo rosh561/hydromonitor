@@ -70,7 +70,8 @@ class DB:
         '''RETURNS A LIST OF OBJECTS. THAT FALLS WITHIN THE START AND END DATE RANGE'''
         try:
             remotedb 	= self.remoteMongo('mongodb://%s:%s@%s:%s' % (self.username, self.password,self.server,self.port), tls=self.tls)
-            result      = list(remotedb.ELET2415.climo.find('''Add your query here'''))
+            result      = list(remotedb.ELET2415.climo.find({'timestamp': {'$gte': start, '$lte':end }}, projection={'_id': 0}, sort=list({'timestamp': 1}.items()) ))
+            print(f"getAllInRange result {result}")
         except Exception as e:
             msg = str(e)
             print("getAllInRange error ",msg)            
@@ -82,7 +83,7 @@ class DB:
         '''RETURNS MIN, MAX, AVG AND RANGE FOR HUMIDITY. THAT FALLS WITHIN THE START AND END DATE RANGE'''
         try:
             remotedb 	= self.remoteMongo('mongodb://%s:%s@%s:%s' % (self.username, self.password,self.server,self.port), tls=self.tls)
-            result      = list(remotedb.ELET2415.climo.aggregate( '''Add your Aggregation pipeline here in this function'''))
+            result      = list(remotedb.ELET2415.climo.aggregate([{'$match': {'timestamp': { '$gte': start,  '$lte': end } }}, {'$group': { '_id': 'humidity',  'humidity': {'$push': '$$ROOT.humidity' }}}, {'$project': {'max': {'$max': '$humidity'}, 'min': {'$min': '$humidity' }, 'avg': {'$avg': '$humidity' }, 'range': {'$subtract': [{'$max': '$humidity'}, {'$min': '$humidity'}] }}}]  ))
         except Exception as e:
             msg = str(e)
             print("humidityMMAS error ",msg)            
@@ -93,7 +94,7 @@ class DB:
         '''RETURNS MIN, MAX, AVG AND RANGE FOR TEMPERATURE. THAT FALLS WITHIN THE START AND END DATE RANGE'''
         try:
             remotedb 	= self.remoteMongo('mongodb://%s:%s@%s:%s' % (self.username, self.password,self.server,self.port), tls=self.tls)
-            result      = list(remotedb.ELET2415.climo.aggregate( '''Add your Aggregation pipeline here in this function'''))
+            result      = list(remotedb.ELET2415.climo.aggregate([{'$match': {'timestamp': {'$gte': start, '$lte': end}}}, {'$group': {'_id': 'temperature', 'temperature': {'$push': '$$ROOT.temperature' }}}, {'$project': {'max': { '$max': '$temperature'}, 'min': {'$min': '$temperature' }, 'avg': {'$avg': '$temperature'}, 'range': {'$subtract': [ {'$max': '$temperature'}, {'$min': '$temperature' }] }}}] ))
         except Exception as e:
             msg = str(e)
             print("temperatureMMAS error ",msg)            
@@ -105,7 +106,7 @@ class DB:
         '''RETURNS THE FREQUENCY DISTROBUTION FOR A SPECIFIED VARIABLE WITHIN THE START AND END DATE RANGE'''
         try:
             remotedb 	= self.remoteMongo('mongodb://%s:%s@%s:%s' % (self.username, self.password,self.server,self.port), tls=self.tls)
-            result      = list(remotedb.ELET2415.climo.aggregate( '''Add your Aggregation pipeline here in this function'''))
+            result      = list(remotedb.ELET2415.climo.aggregate( [{'$match': { 'timestamp': {'$gte': start, '$lte': end} }}, {'$bucket': {'groupBy': f"${variable}", 'boundaries': [0, 20, 40, 60, 80, 100],'default': 'Outliers', 'output': {'count': { '$sum': 1}}}}]))
         except Exception as e:
             msg = str(e)
             print("frequencyDistro error ",msg)            
